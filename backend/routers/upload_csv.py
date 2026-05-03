@@ -42,30 +42,59 @@ def _parse_csv(content: bytes) -> list[str]:
 
     fieldnames = [f.lower().strip() for f in (reader.fieldnames or [])]
     text_col = None
+    
+    # Strategy 1: Look for candidate keywords
     for col in fieldnames:
         if col in CANDIDATE_COLS:
             text_col = col
             break
 
+    # Strategy 2: If no candidate, find the column with the longest average text
+    if text_col is None and fieldnames and rows:
+        scores = {col: 0 for col in fieldnames}
+        original_fields = reader.fieldnames or []
+        col_map = {f.lower().strip(): f for f in original_fields}
+        
+        for row in rows[:50]: # Sample first 50 rows
+            for col in fieldnames:
+                val = str(row.get(col_map.get(col), "")).strip()
+                scores[col] += len(val)
+        
+        # Pick the column with the highest score
+        text_col = max(scores, key=scores.get)
+        print(f"DEBUG: No standard column found. Selected '{text_col}' based on text density.")
+
+    # Strategy 3: Fallback to first column
     if text_col is None and fieldnames:
-        # Fall back to first column
         text_col = fieldnames[0]
+        print(f"DEBUG: Falling back to first column: '{text_col}'")
 
     reviews = []
     original_fields = reader.fieldnames or []
     col_map = {f.lower().strip(): f for f in original_fields}
-    actual_col = col_map.get(text_col, text_col)
+    actual_col = col_map.get(text_col, text_col) if text_col else None
 
     for row in rows:
-        val = row.get(actual_col, "").strip()
+        if actual_col:
+            val = str(row.get(actual_col, "")).strip()
+        else:
+            # Strategy 4: Join all columns if we can't figure out which one is the review
+            val = " ".join([str(v) for v in row.values() if v]).strip()
+            
         if val:
             reviews.append(val)
 
+    if not actual_col:
+        print(f"DEBUG: No specific column selected. Joined all column data. Total: {len(reviews)} reviews.")
+    else:
+        print(f"DEBUG: Successfully parsed {len(reviews)} reviews from column '{actual_col}'")
+    
     return reviews
 
 
 @router.post("/upload-csv", response_model=BulkReviewResponse)
 async def upload_csv(file: UploadFile = File(...)):
+    print(f"DEBUG: Received upload request for file: {file.filename}, type: {file.content_type}")
     """
     Upload a CSV file of customer reviews for batch analysis.
 

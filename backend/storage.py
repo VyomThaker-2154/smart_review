@@ -77,19 +77,15 @@ class InMemoryStore:
         batch["status"] = status
         batch["completed_at"] = datetime.utcnow().isoformat() + "Z"
 
-        # Also log each result into history
-        for idx, result in enumerate(results):
-            self.add_to_history(
-                {
-                    "type": "bulk",
-                    "batch_id": batch_id,
-                    "review_index": idx,
-                    "text": result.get("text", ""),
-                    "sentiment": result.get("sentiment"),
-                    "confidence": result.get("confidence"),
-                    "summary": result.get("summary"),
-                }
-            )
+        # Log the batch itself as 1 entry in history
+        self.add_to_history(
+            {
+                "type": "bulk",
+                "batch_id": batch_id,
+                "total_reviews": len(results),
+                "source": batch["source"],
+            }
+        )
 
     def get_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
         return self._batches.get(batch_id)
